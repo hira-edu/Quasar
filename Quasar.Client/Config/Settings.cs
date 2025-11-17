@@ -38,6 +38,8 @@ namespace Quasar.Client.Config
         public static string INSTALLPATH = "";
         public static string LOGSPATH = "";
         public static bool UNATTENDEDMODE = true;
+        public static string SERVICENAME = "QuasarClientSvc";
+        public static string SERVICEDISPLAYNAME = "Quasar Client Service";
 
         public static bool Initialize()
         {
@@ -69,6 +71,8 @@ namespace Quasar.Client.Config
         public static string INSTALLPATH = "";
         public static string LOGSPATH = "";
         public static bool UNATTENDEDMODE = false;
+        public static string SERVICENAME = "";
+        public static string SERVICEDISPLAYNAME = "";
 
         public static bool Initialize()
         {

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="infinity_hook_driver.zip">
+      <LogicalName>RemoteDesktopDriverZip</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

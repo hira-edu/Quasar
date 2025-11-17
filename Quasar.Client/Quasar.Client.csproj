@@ -28,9 +28,15 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System.Management" />
+    <Reference Include="System.ServiceProcess" />
     <Reference Include="System.Security" />
     <Reference Include="System.Web" />
     <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\Quasar.Driver.RemoteDesktop\infinity_hook_driver.zip">
+      <LogicalName>RemoteDesktopDriverZip</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Update="Properties\Resources.resx">

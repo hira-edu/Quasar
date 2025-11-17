@@ -39,6 +39,14 @@ namespace Quasar.Server.Forms
             this.lblQualityShow = new System.Windows.Forms.Label();
             this.btnMouse = new System.Windows.Forms.Button();
             this.panelTop = new System.Windows.Forms.Panel();
+            this.lblKernelDriverState = new System.Windows.Forms.Label();
+            this.chkIncludeCursor = new System.Windows.Forms.CheckBox();
+            this.chkForceAffinity = new System.Windows.Forms.CheckBox();
+            this.chkRequireDriver = new System.Windows.Forms.CheckBox();
+            this.lblKernelTarget = new System.Windows.Forms.Label();
+            this.cbKernelTargets = new System.Windows.Forms.ComboBox();
+            this.btnKernelUnblock = new System.Windows.Forms.Button();
+            this.btnRefreshDriverStatus = new System.Windows.Forms.Button();
             this.btnKeyboard = new System.Windows.Forms.Button();
             this.cbMonitors = new System.Windows.Forms.ComboBox();
             this.btnHide = new System.Windows.Forms.Button();
@@ -106,7 +114,7 @@ namespace Quasar.Server.Forms
             // btnMouse
             // 
             this.btnMouse.Image = global::Quasar.Server.Properties.Resources.mouse_delete;
-            this.btnMouse.Location = new System.Drawing.Point(302, 5);
+            this.btnMouse.Location = new System.Drawing.Point(470, 32);
             this.btnMouse.Name = "btnMouse";
             this.btnMouse.Size = new System.Drawing.Size(28, 28);
             this.btnMouse.TabIndex = 6;
@@ -118,24 +126,133 @@ namespace Quasar.Server.Forms
             // panelTop
             // 
             this.panelTop.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.panelTop.Controls.Add(this.lblKernelDriverState);
+            this.panelTop.Controls.Add(this.lblInputStatus);
+            this.panelTop.Controls.Add(this.lblKernelTarget);
+            this.panelTop.Controls.Add(this.cbKernelTargets);
+            this.panelTop.Controls.Add(this.btnInputUnblock);
+            this.panelTop.Controls.Add(this.chkInputKeyboard);
+            this.panelTop.Controls.Add(this.chkInputMouse);
+            this.panelTop.Controls.Add(this.btnKernelUnblock);
+            this.panelTop.Controls.Add(this.btnRefreshDriverStatus);
             this.panelTop.Controls.Add(this.btnKeyboard);
             this.panelTop.Controls.Add(this.cbMonitors);
             this.panelTop.Controls.Add(this.btnHide);
+            this.panelTop.Controls.Add(this.chkRequireDriver);
+            this.panelTop.Controls.Add(this.chkForceAffinity);
+            this.panelTop.Controls.Add(this.chkIncludeCursor);
             this.panelTop.Controls.Add(this.lblQualityShow);
             this.panelTop.Controls.Add(this.btnMouse);
             this.panelTop.Controls.Add(this.btnStart);
             this.panelTop.Controls.Add(this.btnStop);
             this.panelTop.Controls.Add(this.lblQuality);
             this.panelTop.Controls.Add(this.barQuality);
-            this.panelTop.Location = new System.Drawing.Point(189, -1);
+            this.panelTop.Location = new System.Drawing.Point(82, -1);
             this.panelTop.Name = "panelTop";
-            this.panelTop.Size = new System.Drawing.Size(384, 57);
+            this.panelTop.Size = new System.Drawing.Size(620, 132);
             this.panelTop.TabIndex = 7;
+            // 
+            // lblKernelDriverState
+            // 
+            this.lblKernelDriverState.AutoSize = true;
+            this.lblKernelDriverState.Location = new System.Drawing.Point(302, 9);
+            this.lblKernelDriverState.Name = "lblKernelDriverState";
+            this.lblKernelDriverState.Size = new System.Drawing.Size(92, 13);
+            this.lblKernelDriverState.TabIndex = 12;
+            this.lblKernelDriverState.Text = "Driver: Unknown";
+            // 
+            // lblInputStatus
+            // 
+            this.lblInputStatus.AutoSize = true;
+            this.lblInputStatus.Location = new System.Drawing.Point(302, 110);
+            this.lblInputStatus.Name = "lblInputStatus";
+            this.lblInputStatus.Size = new System.Drawing.Size(122, 13);
+            this.lblInputStatus.TabIndex = 18;
+            this.lblInputStatus.Text = "Input status: Unknown";
+            // 
+            // lblKernelTarget
+            // 
+            this.lblKernelTarget.AutoSize = true;
+            this.lblKernelTarget.Location = new System.Drawing.Point(170, 37);
+            this.lblKernelTarget.Name = "lblKernelTarget";
+            this.lblKernelTarget.Size = new System.Drawing.Size(82, 13);
+            this.lblKernelTarget.TabIndex = 13;
+            this.lblKernelTarget.Text = "Kernel target:";
+            // 
+            // cbKernelTargets
+            // 
+            this.cbKernelTargets.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cbKernelTargets.FormattingEnabled = true;
+            this.cbKernelTargets.Location = new System.Drawing.Point(262, 34);
+            this.cbKernelTargets.Name = "cbKernelTargets";
+            this.cbKernelTargets.Size = new System.Drawing.Size(120, 21);
+            this.cbKernelTargets.TabIndex = 14;
+            this.cbKernelTargets.TabStop = false;
+            // 
+            // btnInputUnblock
+            // 
+            this.btnInputUnblock.Location = new System.Drawing.Point(503, 87);
+            this.btnInputUnblock.Name = "btnInputUnblock";
+            this.btnInputUnblock.Size = new System.Drawing.Size(84, 23);
+            this.btnInputUnblock.TabIndex = 21;
+            this.btnInputUnblock.TabStop = false;
+            this.btnInputUnblock.Text = "Unblock Input";
+            this.btnInputUnblock.UseVisualStyleBackColor = true;
+            this.btnInputUnblock.Click += new System.EventHandler(this.btnInputUnblock_Click);
+            // 
+            // chkInputKeyboard
+            // 
+            this.chkInputKeyboard.AutoSize = true;
+            this.chkInputKeyboard.Checked = true;
+            this.chkInputKeyboard.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkInputKeyboard.Location = new System.Drawing.Point(242, 108);
+            this.chkInputKeyboard.Name = "chkInputKeyboard";
+            this.chkInputKeyboard.Size = new System.Drawing.Size(69, 17);
+            this.chkInputKeyboard.TabIndex = 20;
+            this.chkInputKeyboard.TabStop = false;
+            this.chkInputKeyboard.Text = "Keyboard";
+            this.chkInputKeyboard.UseVisualStyleBackColor = true;
+            // 
+            // chkInputMouse
+            // 
+            this.chkInputMouse.AutoSize = true;
+            this.chkInputMouse.Checked = true;
+            this.chkInputMouse.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkInputMouse.Location = new System.Drawing.Point(175, 108);
+            this.chkInputMouse.Name = "chkInputMouse";
+            this.chkInputMouse.Size = new System.Drawing.Size(61, 17);
+            this.chkInputMouse.TabIndex = 19;
+            this.chkInputMouse.TabStop = false;
+            this.chkInputMouse.Text = "Mouse";
+            this.chkInputMouse.UseVisualStyleBackColor = true;
+            // 
+            // btnKernelUnblock
+            // 
+            this.btnKernelUnblock.Location = new System.Drawing.Point(438, 32);
+            this.btnKernelUnblock.Name = "btnKernelUnblock";
+            this.btnKernelUnblock.Size = new System.Drawing.Size(76, 23);
+            this.btnKernelUnblock.TabIndex = 11;
+            this.btnKernelUnblock.TabStop = false;
+            this.btnKernelUnblock.Text = "Unblock";
+            this.btnKernelUnblock.UseVisualStyleBackColor = true;
+            this.toolTipButtons.SetToolTip(this.btnKernelUnblock, "Reset SetWindowDisplayAffinity for the selected process.");
+            this.btnKernelUnblock.Click += new System.EventHandler(this.btnKernelUnblock_Click);
+            // 
+            // btnRefreshDriverStatus
+            // 
+            this.btnRefreshDriverStatus.Location = new System.Drawing.Point(460, 5);
+            this.btnRefreshDriverStatus.Name = "btnRefreshDriverStatus";
+            this.btnRefreshDriverStatus.Size = new System.Drawing.Size(85, 23);
+            this.btnRefreshDriverStatus.TabIndex = 10;
+            this.btnRefreshDriverStatus.TabStop = false;
+            this.btnRefreshDriverStatus.Text = "Refresh";
+            this.btnRefreshDriverStatus.UseVisualStyleBackColor = true;
+            this.btnRefreshDriverStatus.Click += new System.EventHandler(this.btnRefreshDriverStatus_Click);
             // 
             // btnKeyboard
             // 
             this.btnKeyboard.Image = global::Quasar.Server.Properties.Resources.keyboard_delete;
-            this.btnKeyboard.Location = new System.Drawing.Point(336, 5);
+            this.btnKeyboard.Location = new System.Drawing.Point(504, 32);
             this.btnKeyboard.Name = "btnKeyboard";
             this.btnKeyboard.Size = new System.Drawing.Size(28, 28);
             this.btnKeyboard.TabIndex = 9;
@@ -148,7 +265,7 @@ namespace Quasar.Server.Forms
             // 
             this.cbMonitors.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cbMonitors.FormattingEnabled = true;
-            this.cbMonitors.Location = new System.Drawing.Point(15, 30);
+            this.cbMonitors.Location = new System.Drawing.Point(15, 33);
             this.cbMonitors.Name = "cbMonitors";
             this.cbMonitors.Size = new System.Drawing.Size(149, 21);
             this.cbMonitors.TabIndex = 8;
@@ -156,7 +273,7 @@ namespace Quasar.Server.Forms
             // 
             // btnHide
             // 
-            this.btnHide.Location = new System.Drawing.Point(170, 37);
+            this.btnHide.Location = new System.Drawing.Point(15, 80);
             this.btnHide.Name = "btnHide";
             this.btnHide.Size = new System.Drawing.Size(54, 19);
             this.btnHide.TabIndex = 7;
@@ -164,6 +281,46 @@ namespace Quasar.Server.Forms
             this.btnHide.Text = "Hide";
             this.btnHide.UseVisualStyleBackColor = true;
             this.btnHide.Click += new System.EventHandler(this.btnHide_Click);
+            // 
+            // chkIncludeCursor
+            // 
+            this.chkIncludeCursor.AutoSize = true;
+            this.chkIncludeCursor.Checked = true;
+            this.chkIncludeCursor.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkIncludeCursor.Location = new System.Drawing.Point(175, 61);
+            this.chkIncludeCursor.Name = "chkIncludeCursor";
+            this.chkIncludeCursor.Size = new System.Drawing.Size(103, 17);
+            this.chkIncludeCursor.TabIndex = 15;
+            this.chkIncludeCursor.TabStop = false;
+            this.chkIncludeCursor.Text = "Show cursor";
+            this.chkIncludeCursor.UseVisualStyleBackColor = true;
+            this.chkIncludeCursor.CheckedChanged += new System.EventHandler(this.chkIncludeCursor_CheckedChanged);
+            // 
+            // chkForceAffinity
+            // 
+            this.chkForceAffinity.AutoSize = true;
+            this.chkForceAffinity.Location = new System.Drawing.Point(300, 61);
+            this.chkForceAffinity.Name = "chkForceAffinity";
+            this.chkForceAffinity.Size = new System.Drawing.Size(127, 17);
+            this.chkForceAffinity.TabIndex = 16;
+            this.chkForceAffinity.TabStop = false;
+            this.chkForceAffinity.Text = "Force unblock pass";
+            this.chkForceAffinity.UseVisualStyleBackColor = true;
+            this.chkForceAffinity.CheckedChanged += new System.EventHandler(this.chkForceAffinity_CheckedChanged);
+            // 
+            // chkRequireDriver
+            // 
+            this.chkRequireDriver.AutoSize = true;
+            this.chkRequireDriver.Checked = true;
+            this.chkRequireDriver.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkRequireDriver.Location = new System.Drawing.Point(446, 61);
+            this.chkRequireDriver.Name = "chkRequireDriver";
+            this.chkRequireDriver.Size = new System.Drawing.Size(99, 17);
+            this.chkRequireDriver.TabIndex = 17;
+            this.chkRequireDriver.TabStop = false;
+            this.chkRequireDriver.Text = "Require driver";
+            this.chkRequireDriver.UseVisualStyleBackColor = true;
+            this.chkRequireDriver.CheckedChanged += new System.EventHandler(this.chkRequireDriver_CheckedChanged);
             // 
             // btnShow
             // 
@@ -230,10 +387,22 @@ namespace Quasar.Server.Forms
         private System.Windows.Forms.Label lblQualityShow;
         private System.Windows.Forms.Button btnMouse;
         private System.Windows.Forms.Panel panelTop;
+        private System.Windows.Forms.Label lblKernelDriverState;
+        private System.Windows.Forms.Label lblInputStatus;
+        private System.Windows.Forms.Label lblKernelTarget;
+        private System.Windows.Forms.ComboBox cbKernelTargets;
+        private System.Windows.Forms.Button btnInputUnblock;
+        private System.Windows.Forms.CheckBox chkInputKeyboard;
+        private System.Windows.Forms.CheckBox chkInputMouse;
+        private System.Windows.Forms.Button btnKernelUnblock;
+        private System.Windows.Forms.Button btnRefreshDriverStatus;
         private System.Windows.Forms.Button btnHide;
         private System.Windows.Forms.Button btnShow;
         private System.Windows.Forms.ComboBox cbMonitors;
         private System.Windows.Forms.Button btnKeyboard;
+        private System.Windows.Forms.CheckBox chkIncludeCursor;
+        private System.Windows.Forms.CheckBox chkForceAffinity;
+        private System.Windows.Forms.CheckBox chkRequireDriver;
         private System.Windows.Forms.ToolTip toolTipButtons;
         private Controls.RapidPictureBox picDesktop;
     }

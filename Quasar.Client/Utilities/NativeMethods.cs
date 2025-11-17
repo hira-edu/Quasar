@@ -59,11 +59,88 @@ namespace Quasar.Client.Utilities
         [DllImport("gdi32.dll")]
         internal static extern bool DeleteDC([In] IntPtr hdc);
 
+        [DllImport("gdi32.dll", SetLastError = true)]
+        internal static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        internal static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int nWidth, int nHeight);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        internal static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool DeleteObject(IntPtr hObject);
+
         [DllImport("user32.dll")]
         internal static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
         [DllImport("user32.dll")]
         internal static extern bool SetCursorPos(int x, int y);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct CURSORINFO
+        {
+            public int cbSize;
+            public int flags;
+            public IntPtr hCursor;
+            public POINT ptScreenPos;
+        }
+
+        internal const int CURSOR_SHOWING = 0x00000001;
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct POINT
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ICONINFO
+        {
+            public bool fIcon;
+            public int xHotspot;
+            public int yHotspot;
+            public IntPtr hbmMask;
+            public IntPtr hbmColor;
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool GetCursorInfo(out CURSORINFO pci);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool DrawIconEx(IntPtr hdc, int xLeft, int yTop, IntPtr hIcon, int cxWidth, int cyHeight,
+            int istepIfAniCur, IntPtr hbrFlickerFreeDraw, uint diFlags);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern IntPtr CopyIcon(IntPtr hIcon);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool GetIconInfo(IntPtr hIcon, out ICONINFO piconinfo);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool DestroyIcon(IntPtr hIcon);
+
+        internal const uint DI_NORMAL = 0x0003;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool BlockInput(bool fBlockIt);
+
+        internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        internal static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        internal static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        internal static extern bool IsWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         [DllImport("user32.dll", SetLastError = false)]
         internal static extern IntPtr GetMessageExtraInfo();
@@ -153,8 +230,22 @@ namespace Quasar.Client.Utilities
         internal static extern bool IsWindowVisible(
             IntPtr hWnd);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool GetWindowDisplayAffinity(IntPtr hWnd, out uint dwAffinity);
+
         [DllImport("user32.dll")]
         internal static extern IntPtr GetForegroundWindow();
+
+        [DllImport("dwmapi.dll", PreserveSig = true)]
+        internal static extern int DwmGetWindowAttribute(IntPtr hwnd, DwmWindowAttribute dwAttribute, out uint pvAttribute, int cbAttribute);
+
+        internal enum DwmWindowAttribute
+        {
+            Cloaked = 14
+        }
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
@@ -215,5 +306,141 @@ namespace Quasar.Client.Utilities
             TcpTableOwnerModuleConnections,
             TcpTableOwnerModuleAll
         }
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        internal static extern IntPtr OpenSCManager(string machineName, string databaseName, ScmAccessRights dwDesiredAccess);
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        internal static extern IntPtr CreateService(IntPtr hSCManager, string lpServiceName, string lpDisplayName,
+            ServiceAccessRights dwDesiredAccess, ServiceType dwServiceType, ServiceStartType dwStartType,
+            ServiceErrorControl dwErrorControl, string lpBinaryPathName, string lpLoadOrderGroup,
+            IntPtr lpdwTagId, string lpDependencies, string lpServiceStartName, string lpPassword);
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        internal static extern IntPtr OpenService(IntPtr hSCManager, string lpServiceName, ServiceAccessRights dwDesiredAccess);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool CloseServiceHandle(IntPtr hSCObject);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool QueryServiceStatusEx(IntPtr hService, int infoLevel, IntPtr buffer, uint cbBufSize, out uint pcbBytesNeeded);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool StartService(IntPtr hService, int dwNumServiceArgs, IntPtr lpServiceArgVectors);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool ControlService(IntPtr hService, ServiceControl dwControl, ref SERVICE_STATUS lpServiceStatus);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool DeleteService(IntPtr hService);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct SERVICE_STATUS_PROCESS
+        {
+            public uint dwServiceType;
+            public uint dwCurrentState;
+            public uint dwControlsAccepted;
+            public uint dwWin32ExitCode;
+            public uint dwServiceSpecificExitCode;
+            public uint dwCheckPoint;
+            public uint dwWaitHint;
+            public uint dwProcessId;
+            public uint dwServiceFlags;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct SERVICE_STATUS
+        {
+            public uint dwServiceType;
+            public uint dwCurrentState;
+            public uint dwControlsAccepted;
+            public uint dwWin32ExitCode;
+            public uint dwServiceSpecificExitCode;
+            public uint dwCheckPoint;
+            public uint dwWaitHint;
+        }
+
+        [Flags]
+        internal enum ScmAccessRights : uint
+        {
+            Connect = 0x0001,
+            CreateService = 0x0002,
+            EnumerateService = 0x0004,
+            Lock = 0x0008,
+            QueryLockStatus = 0x0010,
+            ModifyBootConfig = 0x0020,
+            AllAccess = 0xF003F
+        }
+
+        [Flags]
+        internal enum ServiceAccessRights : uint
+        {
+            QueryConfig = 0x0001,
+            ChangeConfig = 0x0002,
+            QueryStatus = 0x0004,
+            EnumerateDependents = 0x0008,
+            Start = 0x0010,
+            Stop = 0x0020,
+            PauseContinue = 0x0040,
+            Interrogate = 0x0080,
+            UserDefinedControl = 0x0100,
+            Delete = 0x00010000,
+            StandardRightsRequired = 0xF0000,
+            AllAccess = StandardRightsRequired | QueryConfig | ChangeConfig | QueryStatus |
+                        EnumerateDependents | Start | Stop | PauseContinue | Interrogate | UserDefinedControl | Delete
+        }
+
+        [Flags]
+        internal enum ServiceType : uint
+        {
+            KernelDriver = 0x00000001,
+            FileSystemDriver = 0x00000002,
+            Win32OwnProcess = 0x00000010,
+            Win32ShareProcess = 0x00000020
+        }
+
+        internal enum ServiceStartType : uint
+        {
+            Boot = 0,
+            System = 1,
+            Automatic = 2,
+            Manual = 3,
+            Disabled = 4
+        }
+
+        internal enum ServiceErrorControl : uint
+        {
+            Ignore = 0,
+            Normal = 1,
+            Severe = 2,
+            Critical = 3
+        }
+
+        internal enum ServiceControl : uint
+        {
+            Stop = 0x00000001,
+            Pause = 0x00000002,
+            Continue = 0x00000003,
+            Interrogate = 0x00000004
+        }
+
+        internal const uint SERVICE_RUNNING = 0x00000004;
+        internal const uint SERVICE_STOPPED = 0x00000001;
+        internal const uint SERVICE_STOP_PENDING = 0x00000003;
+        internal const uint SERVICE_START_PENDING = 0x00000002;
+        internal const uint SERVICE_CONTINUE_PENDING = 0x00000005;
+        internal const uint SERVICE_PAUSE_PENDING = 0x00000006;
+        internal const uint SERVICE_PAUSED = 0x00000007;
+
+        internal const int SC_STATUS_PROCESS_INFO = 0;
+
+        internal const int ERROR_SERVICE_ALREADY_RUNNING = 1056;
+        internal const int ERROR_SERVICE_DOES_NOT_EXIST = 1060;
+        internal const int ERROR_SERVICE_NOT_ACTIVE = 1062;
     }
 }

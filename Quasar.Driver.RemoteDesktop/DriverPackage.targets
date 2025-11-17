@@ -1,0 +1,8 @@
+<Project>
+  <ItemGroup>
+    <RemoteDesktopDriverPackage Include="$(MSBuildThisFileDirectory)infinity_hook_driver.zip">
+      <LogicalName>RemoteDesktopDriverZip</LogicalName>
+      <Version>2adeab8b71b5a65705333cb5bfa457d1c8a4cce7</Version>
+    </RemoteDesktopDriverPackage>
+  </ItemGroup>
+</Project>

